@@ -1,0 +1,104 @@
+\documentclass[12pt,a4paper,onecolumn]{exam}
+
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{geometry}
+\usepackage{tikz}
+\usepackage[skins]{tcolorbox}
+\usepackage{listings}
+\usepackage[font=small]{caption}
+\usepackage{subcaption}
+
+% --- Code Listing Colors ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% --- Code Listing Style ---
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=2pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=1
+}
+
+\lstset{style=mystyle}
+
+\begin{document}
+
+\renewcommand{\qedsymbol}{$\blacksquare$}
+\begingroup
+    \centering
+    \LARGE \textbf{E1 251 Project: Reconstruction from Non-Uniform Samples Using a DCT-$l_p$ Prior}\\
+    \phantom{123} \\
+    \large \textbf{Dwaipayan Haldar(SR. No.: 27128)}\par
+\endgroup
+
+\noindent\rule{\textwidth}{0.5pt}
+
+\section{Derivation of MM-CG Algorithm}
+
+\[
+J(x) = \|Wx - m\|_2^2 + \lambda \sum_{i=1}^N (\varepsilon + (\text{DCT } x)_i^2)^p
+\]
+Focusing our attention the second term, we can see that $\lambda \sum_{i=1}^N (\varepsilon + (\text{DCT } x)_i^2)^p$ is concave for the given range $0.2 < p < 0.5$. So the cost function can be re-written as 
+\[
+J(\mathbf{x}) = f_0(\mathbf{x}) + f_{ccv}(\mathbf{x})
+\]
+where $f_0(x)$ is the convex term $\|W\mathbf{x} - m\|_2^2$ and $f_{ccv}(\mathbf{x}^{(k)})$ is $\lambda \sum_{i=1}^N (\varepsilon + (\text{DCT} \mathbf{x})_i^2)^p$. For the concave term, the linear approximation at $\mathbf{x}^{(k)}$ maximizes the function around $\mathbf{x}^{(k)}$. We can thus write 
+\[
+f_{ccv}(\mathbf{x}) \leq f_{ccv}(\mathbf{x}^{(k)}) + \nabla f_{ccv}(\mathbf{x}^{(k)})^T(\mathbf{x} - \mathbf{x}^{(k)})\\ 
+\]
+So, we can write
+\[
+J(\mathbf{x}) \leq f_0(\mathbf{x}) + \nabla f_{ccv}(\mathbf{x}^{(k)})^T\mathbf{x} + \text{constant}\\
+\] 
+Let $z_i = (DCT \mathbf{x})_i^2$ and  $g(\mathbf{z}) = \sum_{i=1}^{N}(\varepsilon + z_i)^p$, where $\mathbf{z} = [z_1 z_2 ... z_N]^T$. Then $f_{ccv}(\mathbf{x})= \lambda\mathbf{z}$. Using the above equations we can write,
+\[
+\begin{aligned}
+    g(\mathbf{z}) &\leq \nabla g(\mathbf{z}^{(k)})^T\mathbf{z} + \text{constant} \\
+\frac{\partial g(\mathbf{z}^{(k)})}{\partial z_i^{(k)}} = p(\varepsilon + z_i^{(k)})^{p-1} &= p(\varepsilon + (DCT \mathbf{x}^{(k)})_i^2)^{p-1} =: w_i^{(k)}(\text{By Definition}) \\
+\implies \nabla g(\mathbf{z}^{(k)}) = \big[w_1^{(k)} w_2^{(k)} \cdots w_N^{(k)}   \big]^T &\implies g(\mathbf{z}) \leq \big[w_1^{(k)} w_2^{(k)} \cdots w_N^{(k)}   \big]^T \odot \mathbf{z} + \text{const} \\ 
+\implies g(\mathbf{z}) \leq \big[w_1^{(k)} w_2^{(k)} \cdots w_N^{(k)}   \big]^T \odot (&DCT \mathbf{x})^2 + \text{const} = \sum_{i = i}^{N} w_i^{(k)}(DCT \mathbf{x})_i^2 + \text{const} \\
+\end{aligned}
+\]
+So, the quadratic surrogate of $J(\mathbf{x})$ is:
+\[
+J(\mathbf{x}) \leq \|W\mathbf{x} - m\|_2^2 + \lambda \sum_{i=1}^N w_i^{(k)} (DCT \mathbf{x})_i^2 + \text{Constant}
+\]
+$DCT\mathbf{x}$ can be replaced by $C\mathbf{x}$ as it is a linear transform of $\mathbf{x}$. And $IDCT\mathbf{x}$ can be replaced by $C^T\mathbf{x}$. Let $W_k = diag(w_1^{(k)} w_2^{(k)} \cdots w_N^{(k)})$. Doing these replacements, the equation can be rewritten as:
+\[
+J(\mathbf{x}) \leq \|W\mathbf{x} - m\|_2^2 +  \lambda (C\mathbf{x})^T W_k (C\mathbf{x}) + \text{Constant} = Q(\mathbf{x})(\text{let})
+\]
+Making the gradient equals to 0 to get the minimum value.
+\[
+\nabla Q(\mathbf{x}) = (2 W^T W \mathbf{x} - 2 W^T \mathbf{m}) + (2 \lambda C^T W_k C \mathbf{x}) = \mathbf{0}
+\] 
+The equation can be rewritten as 
+\[
+(W^T W + \lambda C^T W_k C)(\mathbf{x}) = W^T\mathbf{m}
+\]
+which is basically the equation as:
+\[
+(W^T W + \lambda \text{IDCT}(\text{diag}(w^{(k)}) \text{ DCT}))\mathbf{x} = W^T\mathbf{m}
+\] \qed
+
+\section{Description of Experimental setup}
+
+
+\end{document}
