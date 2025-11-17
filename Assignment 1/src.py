@@ -33,72 +33,93 @@ def Wtranspose(N,x, idx):
     Wtransposex[idx] = x
     return Wtransposex
 
-def line_plot(list, titlex, titley):
-    x = range(1,len(list)+1)
-    plt.figure(figsize=(8,4))
-    plt.plot(x, list)
-    plt.title(titlex+" vs "+titley)
-    plt.xlabel(titley)
-    plt.ylabel(titlex)
-    plt.grid(True)
-    plt.show()
-
 
 def sampling(img, r):
-    img_vector = img.flatten()
-    N = img.shape[0]*img.shape[1]
-    M = int(np.round(r*N))
-    idx = np.random.choice(N, size=M, replace=False)
-    Wx_ = img_vector[idx]
-    Wx_l2_2 = (np.linalg.norm(Wx_))**2
-    sigma = np.sqrt(Wx_l2_2/(1000*M))
-    noise = np.random.normal(0, sigma, (M,))
+    """
+    Argument: img and the random binary masks
+    Output: Sampled Noisy Vector and the matrix W(index)
+    """
+    #Flatten Image to a vector
+    img_vector = img.flatten() 
+    N = img.shape[0]*img.shape[1] 
+    #Calculate the value of M, where M = r.N
+    M = int(np.round(r*N)) 
+    
+    idx = np.random.choice(N, size=M, replace=False) #Random Mask
+    Wx_ = img_vector[idx] #Does the operation Wx
 
-    return (Wx_ + noise), idx
+    #Adds and returns the added noisy random sampled vector
+    Wx_l2_2 = (np.linalg.norm(Wx_))**2 
+    sigma = np.sqrt(Wx_l2_2/(1000*M))
+    noise = np.random.normal(0, sigma, (M,)) 
+    return (Wx_ + noise), idx 
 
 def conjugate_gradient(Q_operator, b, x_0):
-    g_0 = (Q_operator(x_0) - b)
-    d_0 = -g_0
+    """
+    Argument: Linear operator Q, RHS vector b, initial guess x_0
+    Output: Solution x and CG iteration count
+    """
+    g_0 = Q_operator(x_0) - b#Initial gradient
+    d_0 = -g_0#Initial descent direction
     iteration = 0
+
     while True:
-        Q_operator_d0 = Q_operator(d_0)
-        den = d_0.T @ (Q_operator_d0)
-        alpha_k = -(g_0.T @ d_0) / (den)
-        x_0 = x_0 + (alpha_k*d_0)
-        g_0 = (Q_operator(x_0) - b)
-        beta_k = (g_0.T @ (Q_operator_d0)) / (den)
-        d_0 = -g_0 + (beta_k * d_0)
+        Q_operator_d0 = Q_operator(d_0)          
+        den = d_0.T @ Q_operator_d0 #Denominator for step size
+        alpha_k = -(g_0.T @ d_0) / den #Step size
+        x_0 = x_0 + alpha_k*d_0 #Update solution
+
+        g_0 = Q_operator(x_0) - b #Update gradient
+        #Direction update factor
+        beta_k = (g_0.T @ Q_operator_d0) / den 
+        d_0 = -g_0 + beta_k*d_0 #Update search direction
+
         iteration += 1
-        if np.linalg.norm(g_0) < 1e-6:
+        if np.linalg.norm(g_0) < 1e-6:      
             break
-    return x_0, iteration
+    return x_0, iteration  
 
 
 
 def mm_cg(N, m, idx, lammbda, p, epsilon = 1e-6):
-    x_0 = Wtranspose(N, m, idx)
+    """
+    Argument: Problem size, sampled image, sampled indices, regularization params
+    Output: Reconstructed signal and convergence metrics
+    """
+    #Initial back-projection estimate
+    x_0 = Wtranspose(N, m, idx)      
     x_k = x_0
-    mask = np.zeros((N,))
-    mask[idx] = 1 
-    list_iteration_cg = []
-    list_objective_function = []
-    list_relative_error = []
+
+    #Sampling mask
+    mask = np.zeros((N,))            
+    mask[idx] = 1
+
+    list_iteration_cg = [] #Store CG iterations
+    list_objective_function = [] #Store objective values
+    list_relative_error = [] #Store relative errors
+
     while True:
-        y_k = dct(x_k, norm= "ortho")
-        w_k = p*((epsilon + y_k**2)**(p-1))
-        def Q_operator(z):
-            dct_z = dct(z, norm= "ortho")
-            return mask*z + lammbda*idct(w_k*dct_z, norm= "ortho")
-        x_cg, iteration_cg = conjugate_gradient(Q_operator, x_0, x_k)
+        y_k = dct(x_k, norm="ortho")#DCT of current estimate
+        w_k = p*((epsilon + y_k**2)**(p-1))#MM weights
+
+        #Defines operator as given in the problem statement
+        def Q_operator(z):                                   
+            dct_z = dct(z, norm="ortho")
+            return mask*z + lammbda*idct(w_k*dct_z, norm="ortho")
+
+        x_cg, iteration_cg = conjugate_gradient(Q_operator, x_0, x_k)#CG update
         relative_error = relative_change(x_cg, x_k)
-        list_objective_function.append(objective_function(idx,x_cg,m,lammbda,p))
+
+        list_objective_function.append(objective_function(idx, x_cg, m, lammbda, p))
         list_iteration_cg.append(iteration_cg)
         list_relative_error.append(relative_error)
-        if  relative_error < 1e-4:
+
+        if relative_error < 1e-4:#Stopping condition
             break
-        else: 
-            x_k = x_cg
+        else:
+            x_k = x_cg#Update iterate
             continue
+
     return x_cg, list_objective_function, list_iteration_cg, list_relative_error
 
 
@@ -138,13 +159,13 @@ def reconstruct(img, r):
         lammbda = np.logspace(-4,0,num=5)[index]
         print(f"Best lambda for p = {p} is {lammbda}")
         print(f"PSNR for that best lambda = {lammbda} and p = {p} is {psnr_list[index]}")
+        print(f"Relative Change for that best lambda = {lammbda} and p = {p} is {relative_change(reconstructed_image_l[index], img)}")
         print(f"Runtime for that best lambda = {lammbda} and p = {p} is {runtime_list[index]}")
         reconstructed_image_p.append(reconstructed_image_l[index])
         list_of_p.append(list_of_l[index])
         list_iter_p.append(list_iter_l[index])
         list_re_p.append(list_re_l[index])
         psnr_list_p.append(psnr_list)
-
 
     end_time_p =  time.time()
     print("Total runtime for one r:", (end_time_p-start_time_p))
@@ -193,7 +214,6 @@ def reconstruct(img, r):
     plt.subplot(1,3,2); plt.title(r"No. of CG iteration per MM vs No. of Iterations(k) for p=$0.5$");plt.plot(range(1,len(list_iter_p[2])+1), list_iter_p[2]);plt.xlabel("no. of iterations(k)");plt.ylabel("No. of CG iteration per MM")
     plt.subplot(1,3,3); plt.title(r"Relative Error vs No. of Iterations(k) for p=$0.5$");plt.plot(range(1,len(list_re_p[2])+1), list_re_p[2]);plt.xlabel("no. of iterations(k)");plt.ylabel("Relative Error")
     plt.show()
-
 
     return reconstructed_image_p
 
