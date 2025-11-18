@@ -10,8 +10,10 @@ def mse(img_ref, img):
     return np.mean((img_ref - img)**2)
 
 def psnr(img, img_ref):
+    img = img.flatten()
+    img_ref = img_ref.flatten()
     num = np.linalg.norm(img_ref, ord = np.inf)
-    den = np.linalg.norm(img_ref - img)/np.sqrt(img_ref.shape[0]*img_ref.shape[1])
+    den = np.linalg.norm(img_ref - img)/np.sqrt(img_ref.shape[0])
     return 20*np.log10(num/den)
 
 def relative_change(x,y):
