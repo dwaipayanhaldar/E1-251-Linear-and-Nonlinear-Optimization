@@ -3,14 +3,12 @@ import matplotlib.pyplot as plt
 from scipy.fftpack import dct, idct
 import time 
 
-# --- Helper Functions for 2D DCT ---
 def dct2(x_flat, shape):
     """
     Performs 2D Orthonormal DCT on a flattened vector.
     Reshapes to 2D -> Applies DCT -> Flattens back.
     """
     x = x_flat.reshape(shape)
-    # Apply DCT on rows then columns (or vice versa) with ortho norm
     return dct(dct(x.T, norm='ortho').T, norm='ortho').flatten()
 
 def idct2(x_flat, shape):
@@ -20,7 +18,7 @@ def idct2(x_flat, shape):
     x = x_flat.reshape(shape)
     return idct(idct(x.T, norm='ortho').T, norm='ortho').flatten()
 
-# --- Metrics ---
+#  Metrics 
 def mse(img_ref, img):
     return np.mean((img_ref - img)**2)
 
@@ -42,7 +40,7 @@ def relative_change(x, y):
     if np.linalg.norm(y) == 0: return 0
     return np.linalg.norm(x - y) / np.linalg.norm(y)
 
-# --- Sampling ---
+#  Sampling 
 def sampling_mask(N, idx):
     mask = np.zeros((N,))
     mask[idx] = 1
@@ -71,22 +69,16 @@ def sampling(img, r):
     noise = np.random.normal(0, sigma, (M,)) 
     return (Wx_ + noise), idx 
 
-# --- Optimization Functions ---
+#  Optimization Functions 
 
 def objective_function(idx, x, m, lammbda, p, img_shape, epsilon=1e-6):
-    # Data fidelity term
     diff = x[idx] - m
     term1 = np.sum(diff**2)
-    
-    # Regularization term (using 2D DCT)
     y = dct2(x, img_shape)
     term2 = lammbda * np.sum((epsilon + np.abs(y))**p)
     return term1 + term2
 
 def soft_threshold(z, threshold):
-    """
-    v = sign(z) * max(|z| - threshold, 0)
-    """
     return np.sign(z) * np.maximum(np.abs(z) - threshold, 0)
 
 def admm_inner_solver(N, m, idx, w_k, x_init, y_prev, lammbda, rho, img_shape, max_admm_iter=1000, tol=1e-4):
@@ -108,16 +100,11 @@ def admm_inner_solver(N, m, idx, w_k, x_init, y_prev, lammbda, rho, img_shape, m
     for t in range(max_admm_iter):
         v_prev = v.copy()
         
-        # --- x-update (Image Domain) ---
-        # s^t = IDCT(v - u)
+        #  x-update 
         s_t = idct2(v - u, img_shape)
-        
-        # Element-wise update based on mask
-        # If observed (mask=1): (m + rho*s)/(1+rho)
-        # If unobserved (mask=0): s
         x = mask * ((m_full + rho * s_t) / (1 + rho)) + (1 - mask) * s_t
         
-        # --- v-update (DCT Domain) ---
+        #  v-update (DCT Domain)
         dct_x = dct2(x, img_shape)
         z_t = dct_x + u
         
@@ -125,10 +112,10 @@ def admm_inner_solver(N, m, idx, w_k, x_init, y_prev, lammbda, rho, img_shape, m
         threshold = (lammbda / rho) * w_k
         v = soft_threshold(z_t, threshold)
         
-        # --- u-update (Dual) ---
+        #  u-update (Dual) 
         u = u + dct_x - v
         
-        # --- Convergence Check ---
+        #  Convergence Check 
         r_norm = np.linalg.norm(dct_x - v)      # Primal residual
         s_norm = np.linalg.norm(rho * (v - v_prev)) # Dual residual
         
@@ -154,16 +141,15 @@ def mm_admm(N, m, idx, rho, lammbda, p, img_shape, max_mm_iter=100, tol=1e-3, ep
         x_prev = x.copy()
         y_prev = v
         
-        # --- MM Weight Update ---
-        # w_i = p * (epsilon + |y_i|)^(p-1)
+        #  MM Weight Update 
         w_k = p * (np.abs(y_prev) + epsilon)**(p - 1)
             
-        # --- ADMM Inner Solver ---
+        #  ADMM Inner Solver 
         x, v, inner_iters = admm_inner_solver(
             N, m, idx, w_k, x_prev, y_prev, lammbda, rho, img_shape
         )
         
-        # --- Convergence Check ---
+        #  Convergence Check 
         norm_x = np.linalg.norm(x)
         rel_error = np.linalg.norm(x - x_prev) / max(1, norm_x)
 
@@ -198,7 +184,11 @@ def reconstruct(img, r):
     start_time_total = time.time()
     
     for p in p_values:
-        print(f"\n--- Processing p={p} ---")
+        print(f"\n Processing p={p} ")
+        
+        # Initialize lists to store sensitivity data for this p
+        psnrs_for_plot = []
+        lambdas_for_plot = []
         
         best_metrics = {
             "psnr": -np.inf,
@@ -210,9 +200,7 @@ def reconstruct(img, r):
         }
         
         # Grid search for Lambda
-        # Note: Depending on image scale, range might need adjustment. 
-        # For [0,1] float images, 1e-4 to 1e-1 is usually good.
-        lambda_grid = np.logspace(-4, -1, num=4) 
+        lambda_grid = np.logspace(-4, 0, num=5) 
         
         for l in lambda_grid:
             start_time_lambda = time.time()
@@ -230,6 +218,10 @@ def reconstruct(img, r):
             curr_psnr = psnr(x_rec, img)
             curr_rel_error = relative_change(x_rec, img)
             
+            # Store data for plotting
+            psnrs_for_plot.append(curr_psnr)
+            lambdas_for_plot.append(l)
+            
             # Update best metrics if this is the best PSNR so far
             if curr_psnr > best_metrics["psnr"]:
                 best_metrics["psnr"] = curr_psnr
@@ -240,17 +232,20 @@ def reconstruct(img, r):
                 best_metrics["err_hist"] = err_hist
                 best_metrics["rel_error"] = curr_rel_error
                 best_metrics["runtime"] = runtime_lambda
-                best_metrics["psnr_list_for_plot"] = []
+
+        # Save the sensitivity lists into the dictionary
+        best_metrics["psnr_list_for_plot"] = psnrs_for_plot
+        best_metrics["lambda_list_for_plot"] = lambdas_for_plot
         
         results_by_p.append(best_metrics)
         print(f"Best for p={p}: Lambda={best_metrics['lambda']:.1e}, PSNR={best_metrics['psnr']:.2f}")
-        print(f"Runtime for best lambda: {best_metrics['runtime']}, Relative error: {best_metrics['rel_error']}")
+        print(f"Runtime for best lambda: {best_metrics['runtime']:.4f}s, Relative error: {best_metrics['rel_error']:.4e}")
 
 
     end_time_total = time.time()
     print(f"\nTotal runtime: {end_time_total - start_time_total:.2f}s")
 
-    # --- Plotting ---
+    #  Plotting 
     
     # 1. Visual Comparison
     plt.figure(figsize=(15, 10))
@@ -279,8 +274,6 @@ def reconstruct(img, r):
     plt.show()
 
     # 2. Convergence Metrics
-    # (Dynamically generating plots based on p_values)
-    
     for i, p in enumerate(p_values):
         res = results_by_p[i]
         k_range = range(1, len(res['obj_hist']) + 1)
@@ -312,13 +305,27 @@ def reconstruct(img, r):
         
         plt.show()
 
+    # 3. Lambda Sensitivity Plot (New)
+    plt.figure(figsize=(10, 6))
+    for i, p in enumerate(p_values):
+        res = results_by_p[i]
+        plt.semilogx(
+            res["lambda_list_for_plot"], 
+            res["psnr_list_for_plot"], 
+            'o-', 
+            linewidth=2, 
+            label=f'p={p}'
+        )
+    
+    plt.title("Parameter Sensitivity: PSNR vs $\lambda$")
+    plt.xlabel("$\lambda$ (log scale)")
+    plt.ylabel("PSNR (dB)")
+    plt.legend()
+    plt.grid(True, which="both", ls="-")
+    plt.tight_layout()
+    plt.show()
+
     return [res['image'] for res in results_by_p]
 
-# --- Example Usage ---
-# Assuming you have an image loaded as 'img' (grayscale, 256x256, float [0,1])
-# img = skimage.data.camera()
-# img = skimage.transform.resize(img, (256, 256))
-# img = img_as_float(img)
-# reconstructed_images = reconstruct(img, r=0.5)
 
 
